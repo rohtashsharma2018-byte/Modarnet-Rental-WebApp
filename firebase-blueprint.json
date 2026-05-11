@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["email", "role"]
+    },
+    "Laptop": {
+      "title": "Laptop",
+      "description": "Information about a laptop available for rent",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "pricePerDay": { "type": "number" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "pricePerDay", "stock"]
+    },
+    "RentalRequest": {
+      "title": "Rental Request",
+      "description": "A request made by a user to rent a laptop",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "laptopId": { "type": "string" },
+        "laptopName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "pickupDate": { "type": "number" },
+        "returnDate": { "type": "number" },
+        "duration": { "type": "number" },
+        "purpose": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "active", "completed", "overdue"] },
+        "totalCost": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "laptopId", "pickupDate", "returnDate", "duration", "status", "quantity"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles including their roles."
+    },
+    "/laptops/{laptopId}": {
+      "schema": { "$ref": "#/entities/Laptop" },
+      "description": "Stores laptops available for rent."
+    },
+    "/rentalRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/RentalRequest" },
+      "description": "Stores rental requests."
+    }
+  }
+}

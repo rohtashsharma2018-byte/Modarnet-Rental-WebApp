@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+       allow read, write: if false; 
+    }
+
+    // Primitive Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Validation Helpers
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role']) &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 100 &&
+             data.role in ['user', 'admin'] &&
+             data.get('name', '') is string &&
+             data.get('phone', '') is string &&
+             data.get('address', '') is string &&
+             data.get('createdAt', 0) is number;
+    }
+
+    function isValidLaptop(data) {
+      return data.keys().hasAll(['name', 'pricePerDay', 'stock', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.get('description', '') is string && data.get('description', '').size() <= 1000 &&
+             data.pricePerDay is number && data.pricePerDay >= 0 &&
+             data.get('price', 0) is number && data.get('price', 0) >= 0 &&
+             data.stock is number && data.stock >= 0 &&
+             data.get('imageUrl', '') is string &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    function isValidRentalRequest(data) {
+      return data.keys().hasAll(['userId', 'laptopId', 'quantity', 'pickupDate', 'returnDate', 'duration', 'status', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.laptopId is string && data.laptopId.size() <= 128 &&
+             data.get('laptopName', '') is string &&
+             data.quantity is number && data.quantity > 0 &&
+             data.pickupDate is number &&
+             data.returnDate is number &&
+             data.duration is number && data.duration > 0 &&
+             data.get('purpose', '') is string && data.get('purpose', '').size() <= 1000 &&
+             data.status in ['pending', 'approved', 'rejected', 'active', 'completed', 'overdue'] &&
+             data.get('totalCost', 0) is number && data.get('totalCost', 0) >= 0 &&
+             data.createdAt is number && data.updatedAt is number;
+    }
+
+    // Collections
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && 
+                       isValidUser(incoming()) && 
+                       incoming().role == 'user'; // Only allow self-registering as 'user' unless admin
+      allow update: if (isOwner(userId) && isValidUser(incoming()) && incoming().role == existing().role && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'address'])) ||
+                       (isAdmin() && isValidUser(incoming()));
+    }
+
+    match /laptops/{laptopId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidId(laptopId) && isValidLaptop(incoming());
+      allow update: if isAdmin() && isValidLaptop(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /rentalRequests/{requestId} {
+      // User can read their own, admin can read all
+      allow read: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      
+      allow create: if isSignedIn() && isValidId(requestId) && 
+                       isValidRentalRequest(incoming()) && 
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       exists(/databases/$(database)/documents/laptops/$(incoming().laptopId)) &&
+                       get(/databases/$(database)/documents/laptops/$(incoming().laptopId)).data.stock >= incoming().quantity;
+                       
+      // User can only update to cancel (rejected) if it was pending.
+      // Admin can update everything.
+      allow update: if (isSignedIn() && existing().userId == request.auth.uid && 
+                        isValidRentalRequest(incoming()) &&
+                        existing().status == 'pending' &&
+                        incoming().status == 'rejected' &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+                       (isAdmin() && isValidRentalRequest(incoming()));
+      allow delete: if isAdmin();
+    }
+  }
+}
